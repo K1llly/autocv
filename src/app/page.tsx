@@ -1,65 +1,204 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import type {
+  AppStep,
+  UserProfile,
+  JobListing,
+  GeneratedCV,
+  GeneratedCoverLetter,
+} from "@/types";
+import { createEmptyProfile } from "@/lib/empty-profile";
+import { downloadElementAsPdf } from "@/lib/pdf";
+import StepIndicator from "@/components/common/StepIndicator";
+import ProfileForm from "@/components/profile/ProfileForm";
+import JobInput from "@/components/job/JobInput";
+import CVPreview from "@/components/cv/CVPreview";
+import CoverLetterPreview from "@/components/cv/CoverLetterPreview";
+
+const EMPTY_JOB: JobListing = {
+  company: "",
+  title: "",
+  location: "",
+  description: "",
+  requirements: "",
+  sourceUrl: "",
+};
 
 export default function Home() {
+  const [step, setStep] = useState<AppStep>("profile");
+  const [profile, setProfile] = useState<UserProfile>(createEmptyProfile());
+  const [job, setJob] = useState<JobListing>(EMPTY_JOB);
+  const [generatedCV, setGeneratedCV] = useState<GeneratedCV | null>(null);
+  const [coverLetter, setCoverLetter] = useState<GeneratedCoverLetter | null>(null);
+  const [language, setLanguage] = useState("en");
+  const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/generate-cv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile, job, language }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to generate CV");
+      }
+
+      const cvData = await res.json();
+      setGeneratedCV({
+        ...cvData,
+        includePhoto: !!profile.contact.photoUrl,
+        language,
+      });
+      setStep("preview");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGenerateCoverLetter() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/generate-cover-letter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile, job, language }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to generate cover letter");
+      }
+
+      const data = await res.json();
+      setCoverLetter({ ...data, language });
+      setStep("cover-letter");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDownloadCV() {
+    setDownloading(true);
+    try {
+      await downloadElementAsPdf(
+        "cv-content",
+        `CV_${profile.contact.fullName.replace(/\s+/g, "_")}_${job.company}.pdf`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download PDF");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleDownloadCoverLetter() {
+    setDownloading(true);
+    try {
+      await downloadElementAsPdf(
+        "cover-letter-content",
+        `Cover_Letter_${profile.contact.fullName.replace(/\s+/g, "_")}_${job.company}.pdf`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download PDF");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border bg-card">
+        <div className="mx-auto max-w-6xl px-6 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold text-foreground">
+              Auto<span className="text-primary">CV</span>
+            </h1>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted">Language:</label>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm"
+              >
+                <option value="en">English</option>
+                <option value="tr">Türkçe</option>
+              </select>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </header>
+
+      <div className="mx-auto max-w-6xl px-6">
+        <StepIndicator currentStep={step} onStepClick={setStep} />
+
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            {error}
+            <button
+              onClick={() => setError(null)}
+              className="ml-2 font-medium hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        <main className="pb-12">
+          {step === "profile" && (
+            <ProfileForm
+              profile={profile}
+              onChange={setProfile}
+              onNext={() => setStep("job")}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          )}
+
+          {step === "job" && (
+            <JobInput
+              job={job}
+              onChange={setJob}
+              onGenerate={handleGenerate}
+              onBack={() => setStep("profile")}
+              loading={loading}
+            />
+          )}
+
+          {step === "preview" && generatedCV && (
+            <CVPreview
+              cv={generatedCV}
+              onChange={setGeneratedCV}
+              onDownload={handleDownloadCV}
+              onCoverLetter={handleGenerateCoverLetter}
+              onBack={() => setStep("job")}
+              downloading={downloading}
+            />
+          )}
+
+          {step === "cover-letter" && coverLetter && (
+            <CoverLetterPreview
+              coverLetter={coverLetter}
+              contact={profile.contact}
+              onDownload={handleDownloadCoverLetter}
+              onBack={() => setStep("preview")}
+              downloading={downloading}
+            />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
